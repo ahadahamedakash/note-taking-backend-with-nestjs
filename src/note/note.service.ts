@@ -2,10 +2,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
 import { PrismaService } from 'src/prisma.service';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
 @Injectable()
 export class NoteService {
@@ -36,16 +42,48 @@ export class NoteService {
     return notes;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} note`;
+  async findOne(id: number, userId: number) {
+    const note = await this.prismaService.note.findFirst({ where: { id } });
+
+    if (!note) {
+      throw new NotFoundException('Not found!');
+    }
+
+    if (note?.userId !== userId) {
+      throw new ForbiddenException('Not Allowed!');
+    }
   }
 
-  update(id: number, updateNoteDto: UpdateNoteDto) {
-    console.log(updateNoteDto);
-    return `This action updates a #${id} note`;
+  async update(id: number, updateNoteDto: UpdateNoteDto, userId: number) {
+    const note = await this.prismaService.note.findFirst({ where: { id } });
+
+    if (!note) {
+      throw new NotFoundException('Not found!');
+    }
+
+    if (note?.userId !== userId) {
+      throw new ForbiddenException('Not Allowed!');
+    }
+
+    const updated = await this.prismaService.note.update({
+      where: { id },
+      data: updateNoteDto,
+    });
+
+    return updated;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} note`;
+  async remove(id: number, userId: number) {
+    try {
+      return await this.prismaService.note.delete({ where: { id, userId } });
+    } catch (err) {
+      if (err instanceof PrismaClientKnownRequestError) {
+        if (err.code === 'P2025') {
+          throw new ForbiddenException();
+        }
+
+        throw err;
+      }
+    }
   }
 }
